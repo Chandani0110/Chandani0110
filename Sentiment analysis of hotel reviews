@@ -1,1 +1,580 @@
+# Installation of all important Libraries
+pip install plotly
+pip install keras
+pip install Tokenizer
+pip install pad_sequences
+pip install Sequential
+pip install layers
+pip install callbacks
+pip install tensorflow
+pip install preprocessing
+pip install sequence
+pip install tensorflow
+
+pip install plotly
+
+pip install keras
+
+# Importing all libraries 
+import pandas as pd
+import numpy as np
+import string, re
+import itertools
+import plotly
+import plotly.offline as py
+import plotly.graph_objs as go
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pad_sequences as ps
+from wordcloud import WordCloud,STOPWORDS
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.metrics import accuracy_score
+from keras.preprocessing.text import Tokenizer
+from keras.models import Sequential
+from keras.layers import Dense, Embedding, LSTM
+from keras.callbacks import EarlyStopping
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from sklearn.ensemble import RandomForestClassifier
+from sklearn import svm
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+py.init_notebook_mode(connected=True)
+%matplotlib inline
+
+
+#Reading the .csv file and fetching the necessary columns. 
+df = pd.read_csv("/Users/chandanimanavadaria/Downloads/hotel_data.csv")
+#Dataselection, a part of feature engineering 
+data=df[['name','reviews.text','reviews.rating', 'reviews.date']]
+
+
+
+#EDA (Explorartory Data Analysis )
+
+data['sentiment']=data['reviews.rating'].apply(lambda x:0 if x<=3 else 1)
+data
+
+#Finding mean, standard deviation, min and max
+data_length = data['reviews.text'].str.len()
+print('Mean:', data_length.mean())
+print ('Standard Deviation:', data_length.std())
+print ('Min:', data_length.min())
+print ('Max:', data_length.max())
+
+# Finding all parameters of data length
+data_length.describe()
+
+#plotting a graph of lenghth of reviews distribution
+data.histo = [go.Histogram(x=data_length, xbins=dict(start=0, end=8000, size=50), marker=dict(color='#8c42f4'))]
+layout = go.Layout(
+                  title='Length of reviews distribution',                  
+                  xaxis=dict(title='Length'),
+                  yaxis=dict(title='Count'),
+                  bargap=0.1)
+fig = go.Figure(data=data.histo, layout=layout)
+py.iplot(fig, filename='length histogram')
+
+#plotting a graph of review length vs. sentiment label
+data['review.length'] = data['reviews.text'].apply(lambda x: len(x))
+data.plot = data.sort_values(by='review.length')
+plot = go.Scatter(x = data.plot['review.length'], y = data.plot['sentiment'], mode='markers')
+lyt = go.Layout(title="Review Length vs. Sentiment Label", xaxis=dict(title='Review Length'),yaxis=dict(title='Sentimento'))
+fig = go.Figure(data=[plot], layout=lyt)
+py.iplot(fig)
+
+
+
+#pearson correlation between length of review vs. sentiment (heatmap)
+colormap = plt.cm.magma
+plt.title('Pearson correlation between length of review\
+           and the sentiment', y=1.05, size=14)
+sns.heatmap(data.plot.drop(['reviews.text','name','reviews.rating', 'reviews.date'], axis=1).astype(float).corr(),
+            linewidths=0.01,
+            vmax=1.0,
+            square=True,
+            cmap=colormap,
+            linecolor='white',
+            annot=True)
+plt.show()
+
+#plotting graph to see sentiment distribution
+sns.set(style="darkgrid")
+b = sns.countplot(x='sentiment',
+                  data = data)
+b.axes.set_title('Sentiment distribution')
+b.set_xlabel("sentiment")
+b.set_ylabel("Count")
+plt.show()
+
+#data_preprocessing
+
+from nltk.corpus import wordnet
+    
+import string
+from nltk import pos_tag
+from nltk.corpus import stopwords
+from nltk.tokenize import WhitespaceTokenizer
+from nltk.stem import WordNetLemmatizer
+
+def get_wordnet_pos(pos_tag):
+    if pos_tag.startswith('J'):
+        return wordnet.ADJ
+    elif pos_tag.startswith('V'):
+        return wordnet.VERB
+    elif pos_tag.startswith('N'):
+        return wordnet.NOUN
+    elif pos_tag.startswith('R'):
+        return wordnet.ADV
+    else:
+        return wordnet.NOUN
+
+def clean_text(text):
+    # lower text
+    text = text.lower()
+    # tokenize text and remove puncutation
+    text = [word.strip(string.punctuation) for word in text.split(" ")]
+    # remove words that contain numbers
+    text = [word for word in text if not any(c.isdigit() for c in word)]
+    # remove stop words
+    stop = stopwords.words('english')
+    stop.remove('not')
+    stop.append('hotel')
+    text = [x for x in text if x not in stop]
+    #remove empty tokens
+    text = [t for t in text if len(t) > 0]
+    #pos tag text
+    pos_tag_text = pos_tag(text)
+    # lemmatize text
+    # the 'post_tag'function will return turples with the first word t[0] is the orginal word, and the second t[1] is the speech tag
+    # for example, ('fly', 'NN')
+    text = [WordNetLemmatizer().lemmatize(t[0], get_wordnet_pos(t[1])) for t in pos_tag_text]
+    # remove words with only one letter
+    text = [t for t in text if len(t) > 1]
+    # join all
+    text = " ".join(text)
+    return(text)
+
+    
+
+    # clean text data
+data['clean.review'] = data["reviews.text"].apply(lambda x:  clean_text(x))
+
+    
+
+data[['name','reviews.text','clean.review']]
+
+#word_cloud
+
+# Add sentiment analysis columns (neg,neu,pos,compond)
+
+vader_sen = SentimentIntensityAnalyzer()
+data_vader = data 
+data_vader["sentiments"] = data['clean.review'].apply(lambda x: vader_sen.polarity_scores(x))
+data_vader = pd.concat([data.drop(['sentiments'], axis=1), data['sentiments'].apply(pd.Series)], axis=1)
+data_vader[['clean.review','pos', 'neg', 'neu', 'compound']]
+
+#Vader Sentiment 
+
+def get_vader(sen): 
+    compound=SentimentIntensityAnalyzer().polarity_scores(sen)['compound']
+    if compound > 0.05: 
+        return 1
+    else: 
+        return 0
+data['vader']=data.apply(lambda x: get_vader(x['clean.review']), axis=1)
+
+print(classification_report(data["sentiment"].values, data["vader"].values))
+acc_vader = (accuracy_score(data["sentiment"].values, data["vader"].values))
+acc_vader
+
+#word cloud
+pos_review = data[data['vader']==1]
+neg_review = data[data['vader']==0]
+
+def word__cloud(text,title):
+    wordcloud = WordCloud(
+                    background_color ='white', 
+                    max_words = 200,
+                    min_font_size = 10,
+                    min_word_length = 3).generate(str(text))
+
+    plt.figure(figsize = (10,10)) 
+    plt.title(title,fontsize =30, pad = 30)
+    plt.imshow(wordcloud) 
+    plt.axis("off") 
+    plt.tight_layout(pad = 0) 
+
+    plt.show()
+
+
+
+word__cloud(pos_review['clean.review'],'Word Cloud for Positive Reviews')
+
+word__cloud(neg_review['clean.review'],'Word Cloud for Negative Reviews')
+
+data[['name','clean.review','sentiment','vader']]
+
+#tfidf
+
+X = data['clean.review']
+y = data['sentiment']
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.20)
+
+vectorizer = TfidfVectorizer(min_df=40)
+train_tfidf = vectorizer.fit_transform(X_train)
+test_tfidf = vectorizer.transform(X_test)
+
+vectorizer.get_feature_names_out(20)
+
+
+#RandomForestClassifier
+
+# Training randomforest model
+rf = RandomForestClassifier(n_estimators = 30, random_state = 42)
+rf.fit(train_tfidf, y_train)
+#predection of test and train data
+pred_train_rf=rf.predict(train_tfidf)
+pred_test_rf= rf.predict(test_tfidf)
+
+
+
+print('Train accuracy:', accuracy_score(y_train, pred_train_rf))
+print('Test accuracy', accuracy_score(y_test, pred_test_rf))
+
+
+#Evaluation matrix 
+print(classification_report(y_train, pred_train_rf))
+print(classification_report(y_test, pred_test_rf))
+  
+
+#confusion matrix
+
+def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix', cmap=plt.cm.Blues):
+    """
+    This function prints and plots the confusion matrix.
+    Normalization can be applied by setting `normalize=True`.
+    """
+    if normalize:
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        print("Normalized confusion matrix")
+    else:
+        print('Confusion matrix, without normalization')
+    print(cm)
+    plt.imshow(cm, interpolation='nearest', cmap=cmap)
+    plt.title(title)
+    plt.colorbar()
+    tick_marks = np.arange(len(classes))
+    plt.xticks(tick_marks, classes, rotation=45)
+    plt.yticks(tick_marks, classes)
+    fmt = '.2f' if normalize else 'd'
+    thresh = cm.max() / 2.
+    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+        plt.text(j, i, format(cm[i, j], fmt),
+                 horizontalalignment="center",
+                 color="white" if cm[i, j] > thresh else "black")
+    plt.tight_layout()
+    plt.ylabel('True label')
+    plt.xlabel('Predicted label')
+
+#Confusion matrix for random forest 
+cnf_mat_train_rf = confusion_matrix(y_train, pred_train_rf)
+cnf_mat_test_rf = confusion_matrix(y_test, pred_test_rf)
+
+plt.figure()
+plot_confusion_matrix(cnf_mat_train_rf,
+                      classes=[0,1],
+                      title='Confusion matrix for Random forest - train')
+plt.figure()
+plot_confusion_matrix(cnf_mat_test_rf,
+                      classes=[0,1],
+                      title='Confusion matrix for Random forest - test')
+
+#SVM Model, kernel=linear
+# Training a SVM model
+svm_model = svm.SVC(kernel='linear', random_state = 42)
+svm_model.fit(train_tfidf, y_train)
+#predictions of test data
+pred_train_svm = svm_model.predict(train_tfidf)
+pred_test_svm = svm_model.predict(test_tfidf)
+
+
+#evaluatin matrix for SVM model
+print(classification_report(y_train, pred_train_svm))
+print(classification_report(y_test, pred_test_svm))
+
+
+#Confusion Matrix for SVM
+cnf_mat_train_svm = confusion_matrix(y_train, pred_train_svm)
+cnf_mat_test_svm = confusion_matrix(y_test, pred_test_svm)
+
+plt.figure()
+plot_confusion_matrix(cnf_mat_train_svm,
+                      classes=[0,1],
+                      title='Confusion matrix for SVM - train')
+plt.figure()
+plot_confusion_matrix(cnf_mat_test_svm,
+                      classes=[0,1],
+                      title='Confusion matrix for SVM - test')
+
+#Naive Bayes
+
+#train NB model
+model_nb = MultinomialNB()
+model_nb.fit(train_tfidf, y_train)
+#Prediction of NB model
+pred_train_nb = model_nb.predict(train_tfidf)
+pred_test_nb = model_nb.predict(test_tfidf)
+print('Train Accuracy:', accuracy_score(y_train, pred_train_nb))
+print('Test Accuracy:', accuracy_score(y_test, pred_test_nb))
+
+
+#Evaluatin matrix for Naive Bayes model
+print(classification_report(y_train,pred_train_nb))  
+print(classification_report(y_test,pred_test_nb))  
+
+#Confusion matrix for Naive bayes 
+cnf_mat_train_nb = confusion_matrix(y_train, pred_train_nb)
+cnf_mat_test_nb = confusion_matrix(y_test, pred_test_nb)
+plt.figure()
+plot_confusion_matrix(cnf_mat_train_nb,
+                      classes=[0,1],
+                      title='Confusion matrix for Naive Bayes - train')
+plt.figure()
+plot_confusion_matrix(cnf_mat_test_nb,
+                      classes=[0,1],
+                      title='Confusion matrix for Naive Bayes - test')
+
+#LSTM
+#setting the value as 1800 as the maximum length of the review is aproximately 2000 after cleaning
+
+features = 1800
+token_lstm = Tokenizer( num_words= features,split=' ')
+token_lstm.fit_on_texts(data['clean.review'].values)
+X = token_lstm.texts_to_sequences(data['clean.review'].values)
+X = pad_sequences(X)
+X
+
+X.shape
+
+embed_dim = 32 #This sets the size of the embedding layer in the model to 32
+
+lstm_out = 16 #sets the size of the output from the LSTM layer to 16
+
+model = Sequential() #creates a new Sequential model object in Keras
+
+model.add(Embedding(features, embed_dim, input_length=X.shape[1])) #This adds an embedding layer to the model
+
+model.add(LSTM(lstm_out)) #adds an LSTM layer to the model
+
+model.add(Dense(1,activation='sigmoid')) #adds a dense (fully connected) layer to the model with 
+                                        #a single output node and a sigmoid activation function
+
+model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy']) #This compiles the model with a binary cross-entropy loss function, 
+                                                                                #the Adam optimization algorithm, and accuracy as a metric. 
+print(model.summary()) #Prints the summary of the model
+
+Y = data['sentiment'].values
+
+
+#Splitting test and train data for LSTM
+X_train, X_test, Y_train, Y_test = train_test_split(X,Y, test_size = 0.20,random_state = 42)
+print(X_train.shape,Y_train.shape)
+print(X_test.shape,Y_test.shape)
+
+#Training a model
+batch_size = 16
+history= model.fit(X_train,
+          Y_train,
+          epochs = 6,
+          batch_size=batch_size,
+          validation_data=(X_test, Y_test),
+          callbacks = [EarlyStopping(monitor='val_accuracy',
+                       min_delta=0.001,
+                       patience=2,
+                       verbose=1)]
+           )
+
+#predicting train and test data
+
+
+predictions_nn_train = model.predict(X_train)
+predictions_nn_test = model.predict(X_test)
+for i in range(len(predictions_nn_train)):
+    if predictions_nn_train[i][0] < 0.5:
+        predictions_nn_train[i][0] = 0
+    else:
+        predictions_nn_train[i][0] = 1
+        
+for i in range(len(predictions_nn_test)):
+    if predictions_nn_test[i][0] < 0.5:
+        predictions_nn_test[i][0] = 0
+    else:
+        predictions_nn_test[i][0] = 1
+        
+#precision= precision(Y_test, predictions_nn_test)
+
+
+
+
+#Evaluation of LSTM model
+print(classification_report(Y_train,predictions_nn_train))  
+print(classification_report(Y_test,predictions_nn_test)) 
+
+#accuracy and loss graph for LSTM
+loss_train = history.history['accuracy']
+loss_val = history.history['val_accuracy']
+epochs = range(1,7)
+plt.plot(epochs, loss_train, 'g', label='Training accuracy')
+plt.plot(epochs, loss_val, 'b', label='validation accuracy')
+plt.title('Training and Validation accuracy')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.legend()
+plt.show()
+
+loss_train = history.history['loss']
+loss_val = history.history['val_loss']
+epochs = range(1,7)
+plt.plot(epochs, loss_train, 'g', label='Training loss')
+plt.plot(epochs, loss_val, 'b', label='validation loss')
+plt.title('Training and Validation loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+plt.show()
+
+
+#Confusion matrix for LSTM
+cnf_matrix_train = confusion_matrix(Y_train, predictions_nn_train)
+cnf_matrix_test = confusion_matrix(Y_test, predictions_nn_test)
+plt.figure()
+plot_confusion_matrix(cnf_matrix_train,
+                      classes=[0,1],
+                      title='Confusion matrix for LSTM - train')
+plt.figure()
+plot_confusion_matrix(cnf_matrix_test,
+                      classes=[0,1],
+                      title='Confusion matrix for LSTM - test')
+
+
+#predicting the original hotel_review data
+
+#tokenizing
+token_lstm.fit_on_texts(data['clean.review'].values)
+review_tok=token_lstm.texts_to_sequences(data['clean.review'].values)
+review_pad=pad_sequences(review_tok)
+data['pred'] = model.predict(review_pad)
+
+#predictions
+data['pred_ans']=data['pred'].apply(lambda x:0 if x<=0.5 else 1)
+print('final accuracy', accuracy_score(data['sentiment'], data['pred_ans']))
+
+
+
+#fetching year out of the date for further analysis 
+data["date"] = pd.to_datetime(data["reviews.date"])
+data['year'] = pd.DatetimeIndex(data['date']).year
+data['year']
+
+#analysis:1 Top hotels with highest rating each year
+ana1 = data[['name','pred','year']].groupby(['year','name']).mean().reset_index() 
+ana1['pred_ans']=ana1['pred'].apply(lambda x:0 if x<=0.5 else 1)
+analysis1= ana1.groupby('year').head(1).sort_values(['year','pred'],ascending = False).reset_index(drop=True)
+analysis1
+
+#analysis:2 Top hotels with lowest rating each year
+ana2 = data[['name','pred','year']].groupby(['year','name']).mean().reset_index() 
+ana2['pred_ans']=ana2['pred'].apply(lambda x:0 if x<=0.5 else 1)
+analysis2= ana2.groupby('year').head(1).sort_values(['year','pred'],ascending = True).reset_index(drop=True)
+analysis2
+
+#analysis:3 Overall Top 10 hotels with highest rating 
+ana3 = data[['name','pred']].groupby(['name']).mean().sort_values('pred',ascending = False).head(10).reset_index() 
+ana3['pred_ans']=ana3['pred'].apply(lambda x:0 if x<=0.5 else 1)
+
+ana3
+
+#analysis:4 Overall Top 10 hotels with lowest rating 
+ana4 = data[['name','pred']].groupby(['name']).mean().sort_values('pred',ascending = True).head(10).reset_index() 
+ana4['pred_ans']=ana4['pred'].apply(lambda x:0 if x<=0.5 else 1)
+ana4
+
+
+#analysis:5 Overall hotel rating
+ana5 = data[['name','pred',]].groupby(['name']).mean().reset_index() 
+#hotelwise[hotelwise['name'] == 'EVEN Hotel Brooklyn']
+ana5['pred_ans']=ana5['pred'].apply(lambda x:0 if x<=0.5 else 1)
+ana5[ana5['name'] == 'Anaheim Del Sol Inn']
+             
+
+data.name.unique()
+
+#analysis:6 Overall hotel rating over the years
+hotel_year = data[['name','pred','year']].groupby(['year','name']).mean().sort_values(['year','pred']).reset_index() 
+hotel_year1= hotel_year[hotel_year['name'] == "Anaheim Del Sol Inn"]
+plt.plot(hotel_year1['year'], hotel_year1['pred'])
+
+plt.title('Overall hotel rating over the years')
+plt.ylabel('prediction')
+plt.xlabel('year')
+plt.show()
+
+
+
+# Word Cloud for Top hotel review
+top_hotel = data[data['name']=="Hampton Inn Suites Red Bluff"]
+word__cloud(top_hotel['clean.review'],'Word Cloud for Top hotel review')
+
+
+
+#Word Cloud for least hotel review
+neg_hotel = data[data['name']=="Best Western Logan Inn"]
+word__cloud(neg_hotel['clean.review'],'Word Cloud for least hotel review')
+
+
+
+#prediction of real time data
+#fetching data
+get_data={'real_review':[ 'food was delicious', 'bedsheets were clean','excellent room interior','hotel was not good']}
+real_data=pd.DataFrame(get_data)
+
+
+#prediction
+realdata_tok=token_lstm.texts_to_sequences(real_data['real_review'].values)
+realdata_pad=pad_sequences(realdata_tok)
+real_data['real_pred'] = model.predict(realdata_pad)
+
+#result
+real_data['result']=real_data['real_pred'].apply(lambda x:'Negative' if x<0.5 else 'Positive')
+
+real_data
+
+#failed attempt 
+import plotly.express as px
+
+year_order = np.sort(data.year.unique())
+fig = px.histogram(
+    analysis1, x = analysis1['name'],
+    category_orders = {"year": year_order},
+    color = analysis1['year'], barmode = "group")
+fig.show()
+
+#failed attempt 
+pos_review = data[data['pred']==1]
+top_pos_com = pos_review[['name','pred_ans']].groupby(['name']).mean().sort_values('pred_ans',ascending = True).tail(20).reset_index() 
+# top_pos_com
+
+plt.figure(figsize = (10,5))
+plt.barh(ana1['name'],ana1['pred_ans'])
+plt.title('Top 10 Hotels with the Best Reviews',fontSize = 18)
+plt.ylabel('Hotel Name',fontSize = 14)
+plt.xlabel('Mean Compound Sentiment Score',fontSize = 14)
+plt.figure(figsize = (10,2))
+
 
